@@ -1,6 +1,5 @@
 import axios from 'axios';
-
-const BASE_URL = 'http://localhost:8080/api';
+import BASE_URL from './config';
 
 export const shortenUrl = async (originalUrl, expiryDays = 30) => {
     const response = await axios.post(`${BASE_URL}/shorten`, {
