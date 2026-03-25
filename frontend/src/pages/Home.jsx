@@ -152,14 +152,15 @@ function Home() {
 
 const styles = {
     page: {
-        minHeight: '100vh',
-        background: 'linear-gradient(-45deg, #0f3460, #16213e, #1a1a2e, #0d1b2a)',
-        backgroundSize: '400% 400%',
-        padding: '60px 20px 40px',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-    },
+    minHeight: '100vh',
+    background: 'linear-gradient(-45deg, #0f3460, #16213e, #1a1a2e, #0d1b2a)',
+    backgroundSize: '400% 400%',
+    animation: 'gradientShift 12s ease infinite',  // add this line
+    padding: '60px 20px 40px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+},
     toast: {
         position: 'fixed',
         top: '80px',

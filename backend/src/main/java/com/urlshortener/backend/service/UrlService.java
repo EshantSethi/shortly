@@ -26,6 +26,18 @@ public class UrlService {
     private static final int SHORT_CODE_LENGTH = 6;
 
     public UrlMapping shortenUrl(String originalUrl, int expiryDays) {
+         if (originalUrl == null || originalUrl.trim().isEmpty()) {
+        throw new IllegalArgumentException("URL cannot be empty");
+    }
+    if (originalUrl.length() > 2000) {
+        throw new IllegalArgumentException("URL is too long");
+    }
+    if (!originalUrl.startsWith("http://") && !originalUrl.startsWith("https://")) {
+        originalUrl = "https://" + originalUrl;
+    }
+
+    // rest of your existing code stays exactly the same
+
         String shortCode = generateUniqueShortCode();
 
         UrlMapping urlMapping = new UrlMapping();
