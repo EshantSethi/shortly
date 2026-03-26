@@ -1,15 +1,52 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 
 function Navbar() {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const [menuOpen, setMenuOpen] = useState(false);
+
+    const handleFeaturesClick = (e) => {
+        e.preventDefault();
+        setMenuOpen(false);
+        if (location.pathname === '/') {
+            document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
+        } else {
+            navigate('/');
+            setTimeout(() => {
+                document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
+            }, 100);
+        }
+    };
+
     return (
         <nav style={styles.nav}>
             <div style={styles.brand}>Shortly</div>
-            <div style={styles.links}>
+
+            {/* Desktop links */}
+            <div className="nav-desktop-links" style={styles.links}>
                 <Link to="/" style={styles.link}>Home</Link>
                 <Link to="/dashboard" style={styles.link}>Dashboard</Link>
-                <a href="#features" style={styles.link}>Features</a>
-                <a href="https://github.com/EshantSethi/url-shortener" target="_blank" rel="noreferrer" style={styles.githubBtn}>GitHub</a>
+                <a href="#features" onClick={handleFeaturesClick} style={styles.link}>Features</a>
+            </div>
+
+            {/* Hamburger button (mobile only) */}
+            <button
+                className="nav-hamburger"
+                style={styles.hamburger}
+                onClick={() => setMenuOpen(o => !o)}
+                aria-label="Toggle menu"
+            >
+                <span style={{ ...styles.bar, transform: menuOpen ? 'rotate(45deg) translate(5px,5px)' : 'none' }} />
+                <span style={{ ...styles.bar, opacity: menuOpen ? 0 : 1 }} />
+                <span style={{ ...styles.bar, transform: menuOpen ? 'rotate(-45deg) translate(5px,-5px)' : 'none' }} />
+            </button>
+
+            {/* Mobile dropdown */}
+            <div className={`nav-links${menuOpen ? ' open' : ''}`}>
+                <Link to="/" style={styles.mobileLink} onClick={() => setMenuOpen(false)}>Home</Link>
+                <Link to="/dashboard" style={styles.mobileLink} onClick={() => setMenuOpen(false)}>Dashboard</Link>
+                <a href="#features" onClick={handleFeaturesClick} style={styles.mobileLink}>Features</a>
             </div>
         </nav>
     );
@@ -45,15 +82,28 @@ const styles = {
         fontSize: '14px',
         fontWeight: '500',
     },
-    githubBtn: {
-        background: 'rgba(255,255,255,0.08)',
-        border: '1px solid rgba(255,255,255,0.15)',
-        color: '#ffffff',
-        borderRadius: '8px',
-        padding: '7px 16px',
-        fontSize: '13px',
-        fontWeight: '600',
+    hamburger: {
+        display: 'none',
+        flexDirection: 'column',
+        gap: '5px',
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: '4px',
+    },
+    bar: {
+        display: 'block',
+        width: '22px',
+        height: '2px',
+        background: '#ffffff',
+        borderRadius: '2px',
+        transition: 'all 0.25s ease',
+    },
+    mobileLink: {
+        color: '#a8a8b3',
         textDecoration: 'none',
+        fontSize: '15px',
+        fontWeight: '500',
     },
 };
 

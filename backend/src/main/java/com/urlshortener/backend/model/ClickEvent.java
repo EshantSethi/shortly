@@ -6,7 +6,10 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity
-@Table(name = "click_events")
+@Table(name = "click_events", indexes = {
+    @Index(name = "idx_click_events_clicked_at", columnList = "clickedAt"),
+    @Index(name = "idx_click_events_short_code", columnList = "shortCode")
+})
 public class ClickEvent {
 
     @Id

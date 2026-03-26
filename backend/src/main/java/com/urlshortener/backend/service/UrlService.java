@@ -1,16 +1,18 @@
 package com.urlshortener.backend.service;
 
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.urlshortener.backend.model.ClickEvent;
 import com.urlshortener.backend.model.UrlMapping;
@@ -31,11 +33,15 @@ public class UrlService {
 
     private static final String CHARACTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     private static final int SHORT_CODE_LENGTH = 6;
+    // Reuse a single SecureRandom — thread-safe and cryptographically strong
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
+    @Transactional
     public UrlMapping shortenUrl(String originalUrl, int expiryDays, String customCode) {
         if (originalUrl == null || originalUrl.trim().isEmpty()) {
             throw new IllegalArgumentException("URL cannot be empty");
         }
+        originalUrl = originalUrl.trim();
         if (originalUrl.length() > 2000) {
             throw new IllegalArgumentException("URL is too long");
         }
@@ -67,23 +73,40 @@ public class UrlService {
             urlMapping.setExpiresAt(LocalDateTime.now().plusDays(expiryDays));
         }
 
-        UrlMapping saved = urlRepository.save(urlMapping);
+        UrlMapping saved;
+        try {
+            saved = urlRepository.save(urlMapping);
+        } catch (DataIntegrityViolationException e) {
+            // Race condition: another request took this short code — retry with a new one
+            urlMapping.setShortCode(generateUniqueShortCode());
+            saved = urlRepository.save(urlMapping);
+        }
 
-        redisTemplate.opsForValue().set(
-            shortCode,
-            originalUrl,
-            expiryDays > 0 ? expiryDays : 30,
-            TimeUnit.DAYS
-        );
+        // Cache in Redis — permanent links get no TTL, expiring ones get exact TTL
+        // Redis failure is non-fatal: DB is the source of truth
+        try {
+            if (expiryDays > 0) {
+                redisTemplate.opsForValue().set(saved.getShortCode(), originalUrl, expiryDays, TimeUnit.DAYS);
+            } else {
+                redisTemplate.opsForValue().set(saved.getShortCode(), originalUrl);
+            }
+        } catch (Exception e) {
+            // Redis unavailable — link is saved in DB, redirects will still work via DB fallback
+        }
 
         return saved;
     }
 
     public Optional<String> getOriginalUrl(String shortCode) {
-        String cachedUrl = redisTemplate.opsForValue().get(shortCode);
-        if (cachedUrl != null) {
-            incrementClickCount(shortCode);
-            return Optional.of(cachedUrl);
+        // Try Redis first — fall back to DB if Redis is unavailable
+        try {
+            String cachedUrl = redisTemplate.opsForValue().get(shortCode);
+            if (cachedUrl != null) {
+                incrementClickCount(shortCode);
+                return Optional.of(cachedUrl);
+            }
+        } catch (Exception e) {
+            // Redis unavailable — proceed to DB lookup
         }
 
         Optional<UrlMapping> mapping = urlRepository.findByShortCode(shortCode);
@@ -95,12 +118,20 @@ public class UrlService {
                 return Optional.empty();
             }
 
-            redisTemplate.opsForValue().set(
-                shortCode,
-                urlMapping.getOriginalUrl(),
-                30,
-                TimeUnit.DAYS
-            );
+            // Re-cache with remaining TTL (or no TTL if permanent) — best-effort
+            try {
+                if (urlMapping.getExpiresAt() != null) {
+                    long remainingDays = java.time.temporal.ChronoUnit.DAYS.between(
+                        LocalDateTime.now(), urlMapping.getExpiresAt());
+                    if (remainingDays > 0) {
+                        redisTemplate.opsForValue().set(shortCode, urlMapping.getOriginalUrl(), remainingDays, TimeUnit.DAYS);
+                    }
+                } else {
+                    redisTemplate.opsForValue().set(shortCode, urlMapping.getOriginalUrl());
+                }
+            } catch (Exception e) {
+                // Redis unavailable — continue without caching
+            }
 
             incrementClickCount(shortCode);
             return Optional.of(urlMapping.getOriginalUrl());
@@ -109,6 +140,7 @@ public class UrlService {
         return Optional.empty();
     }
 
+    // Returns ALL URLs (for dashboard management — includes expired so user can delete them)
     public List<UrlMapping> getAllUrls() {
         return urlRepository.findAll();
     }
@@ -130,11 +162,9 @@ public class UrlService {
         return result;
     }
 
+    // Atomic increment — no read-modify-write race condition
     private void incrementClickCount(String shortCode) {
-        urlRepository.findByShortCode(shortCode).ifPresent(mapping -> {
-            mapping.setClickCount(mapping.getClickCount() + 1);
-            urlRepository.save(mapping);
-        });
+        urlRepository.incrementClickCount(shortCode);
         ClickEvent event = new ClickEvent();
         event.setShortCode(shortCode);
         event.setClickedAt(LocalDateTime.now());
@@ -150,10 +180,9 @@ public class UrlService {
     }
 
     private String generateShortCode() {
-        Random random = new Random();
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder(SHORT_CODE_LENGTH);
         for (int i = 0; i < SHORT_CODE_LENGTH; i++) {
-            sb.append(CHARACTERS.charAt(random.nextInt(CHARACTERS.length())));
+            sb.append(CHARACTERS.charAt(SECURE_RANDOM.nextInt(CHARACTERS.length())));
         }
         return sb.toString();
     }

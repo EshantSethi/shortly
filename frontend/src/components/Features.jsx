@@ -29,7 +29,7 @@ const features = [
     {
         icon: '🛡',
         title: 'REST API',
-        desc: 'Full REST API backend. All endpoints documented and ready for integration.',
+        desc: 'Full REST API backend with clean JSON responses. Easy to integrate with any client.',
     },
 ];
 

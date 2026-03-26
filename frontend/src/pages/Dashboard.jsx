@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { getAllUrls, deleteUrl, getAnalytics } from '../services/api';
 import { Bar, Line } from 'react-chartjs-2';
 import {
@@ -10,32 +11,46 @@ import {
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend);
 
+function isExpired(url) {
+    return url.expiresAt && new Date(url.expiresAt) <= new Date();
+}
+
 function Dashboard() {
     const [urls, setUrls] = useState([]);
     const [analytics, setAnalytics] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [fetchError, setFetchError] = useState('');
     const [search, setSearch] = useState('');
     const [toast, setToast] = useState('');
 
     useEffect(() => { fetchAll(); }, []);
 
     const fetchAll = async () => {
+        setFetchError('');
         try {
             const [urlData, analyticsData] = await Promise.all([getAllUrls(), getAnalytics()]);
             setUrls(urlData);
             setAnalytics(analyticsData);
         } catch (err) {
-            console.error('Fetch failed:', err);
+            if (!err.response) {
+                setFetchError('Cannot reach the server. Make sure the backend is running.');
+            } else {
+                setFetchError('Failed to load data. Please refresh and try again.');
+            }
         }
         setLoading(false);
     };
 
     const handleDelete = async (id) => {
+        if (!window.confirm('Delete this link? This cannot be undone.')) return;
         try {
             await deleteUrl(id);
             fetchAll();
+            setToast('Link deleted.');
+            setTimeout(() => setToast(''), 2000);
         } catch (err) {
-            console.error('Delete failed:', err);
+            setToast('Failed to delete. Try again.');
+            setTimeout(() => setToast(''), 2000);
         }
     };
 
@@ -50,13 +65,22 @@ function Dashboard() {
         url.shortCode.toLowerCase().includes(search.toLowerCase())
     );
 
+    // Stats only from active (non-expired) URLs
+    const activeUrls = urls.filter(u => !isExpired(u));
+    const totalClicks = activeUrls.reduce((sum, u) => sum + u.clickCount, 0);
+
+    // Fix: find today's entry by date string rather than assuming last element
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayEntry = analytics.find(a => a.day === todayStr);
+    const clicksToday = todayEntry ? Number(todayEntry.count) : 0;
+
     const baseUrl = process.env.REACT_APP_API_URL
         ? process.env.REACT_APP_API_URL.replace('/api', '')
         : 'http://localhost:8080';
 
     const barData = {
-        labels: urls.map(u => u.shortCode),
-        datasets: [{ label: 'Total Clicks', data: urls.map(u => u.clickCount), backgroundColor: '#e94560', borderRadius: 6 }]
+        labels: activeUrls.map(u => u.shortCode),
+        datasets: [{ label: 'Total Clicks', data: activeUrls.map(u => u.clickCount), backgroundColor: '#e94560', borderRadius: 6 }]
     };
 
     const lineData = {
@@ -92,27 +116,34 @@ function Dashboard() {
                 <h1 style={styles.title}>Dashboard</h1>
                 <p style={styles.subtitle}>Track all your shortened URLs and their performance</p>
 
-                {loading ? <p style={styles.loading}>Loading...</p> : (
+                {loading ? <p style={styles.loading}>Loading...</p> : fetchError ? (
+                    <div style={styles.errorBanner}>{fetchError}</div>
+                ) : urls.length === 0 ? (
+                    <div style={styles.emptyState}>
+                        <div style={styles.emptyIcon}>🔗</div>
+                        <h2 style={styles.emptyTitle}>No links yet</h2>
+                        <p style={styles.emptyText}>Create your first short link and it will appear here.</p>
+                        <Link to="/" style={styles.emptyBtn}>Create a short link</Link>
+                    </div>
+                ) : (
                     <>
-                        <div style={styles.statsRow}>
+                        <div className="dash-stats-row" style={styles.statsRow}>
                             <div style={styles.statCard}>
-                                <p style={styles.statNumber}>{urls.length}</p>
-                                <p style={styles.statLabel}>Total URLs</p>
+                                <p style={styles.statNumber}>{activeUrls.length}</p>
+                                <p style={styles.statLabel}>Active URLs</p>
                             </div>
                             <div style={styles.statCard}>
-                                <p style={styles.statNumber}>{urls.reduce((sum, u) => sum + u.clickCount, 0)}</p>
+                                <p style={styles.statNumber}>{totalClicks}</p>
                                 <p style={styles.statLabel}>Total Clicks</p>
                             </div>
                             <div style={styles.statCard}>
-                                <p style={styles.statNumber}>
-                                    {analytics.length > 0 ? analytics[analytics.length - 1].count : 0}
-                                </p>
+                                <p style={styles.statNumber}>{clicksToday}</p>
                                 <p style={styles.statLabel}>Clicks Today</p>
                             </div>
                         </div>
 
-                        <div style={styles.chartsRow}>
-                            {urls.length > 0 && (
+                        <div className="charts-row" style={styles.chartsRow}>
+                            {activeUrls.length > 0 && (
                                 <div style={styles.chartBox}>
                                     <Bar data={barData} options={{ ...chartOptions, plugins: { ...chartOptions.plugins, title: { ...chartOptions.plugins.title, display: true, text: 'Clicks per Short URL' } } }} />
                                 </div>
@@ -145,36 +176,44 @@ function Dashboard() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredUrls.map(url => (
-                                        <tr key={url.id} style={styles.tr}>
-                                            <td style={styles.td}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <a
-                                                        href={`${baseUrl}/api/r/${url.shortCode}`}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                        style={styles.codeLink}>
-                                                        {url.shortCode}
-                                                    </a>
-                                                    <button
-                                                        style={styles.dashCopyBtn}
-                                                        onClick={() => copyToClipboard(`${baseUrl}/api/r/${url.shortCode}`)}>
-                                                        Copy
+                                    {filteredUrls.map(url => {
+                                        const expired = isExpired(url);
+                                        return (
+                                            <tr key={url.id} style={{ ...styles.tr, opacity: expired ? 0.6 : 1 }}>
+                                                <td style={styles.td}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                        <a
+                                                            href={`${baseUrl}/api/r/${url.shortCode}`}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            style={styles.codeLink}>
+                                                            {url.shortCode}
+                                                        </a>
+                                                        {expired
+                                                            ? <span style={styles.expiredBadge}>Expired</span>
+                                                            : <button
+                                                                style={styles.dashCopyBtn}
+                                                                onClick={() => copyToClipboard(`${baseUrl}/api/r/${url.shortCode}`)}>
+                                                                Copy
+                                                              </button>
+                                                        }
+                                                    </div>
+                                                </td>
+                                                <td style={{ ...styles.td, ...styles.urlCell }}>{url.originalUrl}</td>
+                                                <td style={{ ...styles.td, textAlign: 'center' }}>{url.clickCount}</td>
+                                                <td style={styles.td}>
+                                                    {url.expiresAt ? new Date(url.expiresAt).toLocaleDateString(undefined, {
+                                                        year: 'numeric', month: 'short', day: 'numeric'
+                                                    }) : 'Never'}
+                                                </td>
+                                                <td style={styles.td}>
+                                                    <button style={styles.deleteBtn} onClick={() => handleDelete(url.id)}>
+                                                        Delete
                                                     </button>
-                                                </div>
-                                            </td>
-                                            <td style={{ ...styles.td, ...styles.urlCell }}>{url.originalUrl}</td>
-                                            <td style={{ ...styles.td, textAlign: 'center' }}>{url.clickCount}</td>
-                                            <td style={styles.td}>
-                                                {url.expiresAt ? new Date(url.expiresAt).toLocaleDateString() : 'Never'}
-                                            </td>
-                                            <td style={styles.td}>
-                                                <button style={styles.deleteBtn} onClick={() => handleDelete(url.id)}>
-                                                    Delete
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                     {filteredUrls.length === 0 && (
                                         <tr>
                                             <td colSpan={5} style={{ ...styles.td, textAlign: 'center', color: '#a8a8b3' }}>
@@ -198,6 +237,35 @@ const styles = {
     title: { color: '#ffffff', fontSize: '28px', marginBottom: '8px' },
     subtitle: { color: '#a8a8b3', fontSize: '14px', marginBottom: '32px' },
     loading: { color: '#a8a8b3', textAlign: 'center' },
+    errorBanner: {
+        background: 'rgba(233,69,96,0.12)',
+        border: '1px solid rgba(233,69,96,0.3)',
+        borderRadius: '10px',
+        padding: '16px 20px',
+        color: '#e94560',
+        fontSize: '14px',
+        textAlign: 'center',
+        marginBottom: '24px',
+    },
+    emptyState: {
+        textAlign: 'center',
+        padding: '60px 20px',
+        background: '#16213e',
+        borderRadius: '16px',
+    },
+    emptyIcon: { fontSize: '48px', marginBottom: '16px' },
+    emptyTitle: { color: '#ffffff', fontSize: '20px', fontWeight: '700', marginBottom: '10px' },
+    emptyText: { color: '#a8a8b3', fontSize: '14px', marginBottom: '24px' },
+    emptyBtn: {
+        display: 'inline-block',
+        padding: '12px 28px',
+        background: 'linear-gradient(135deg, #e94560, #c73652)',
+        color: '#ffffff',
+        borderRadius: '10px',
+        textDecoration: 'none',
+        fontSize: '14px',
+        fontWeight: '600',
+    },
     toast: {
         position: 'fixed', top: '80px', right: '24px',
         background: '#16213e', border: '1px solid rgba(233,69,96,0.3)',
@@ -224,6 +292,12 @@ const styles = {
     td: { color: '#ffffff', fontSize: '13px', padding: '14px 16px' },
     urlCell: { maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
     codeLink: { color: '#e94560', fontWeight: 'bold', textDecoration: 'none' },
+    expiredBadge: {
+        fontSize: '10px', color: '#e94560',
+        background: 'rgba(233,69,96,0.1)',
+        border: '1px solid rgba(233,69,96,0.2)',
+        borderRadius: '4px', padding: '2px 6px',
+    },
     dashCopyBtn: {
         padding: '3px 8px', background: 'rgba(233,69,96,0.1)',
         border: '1px solid rgba(233,69,96,0.2)', borderRadius: '4px',

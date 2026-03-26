@@ -6,6 +6,7 @@ import Features from './components/Features';
 import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import NotFound from './pages/NotFound';
+import LinkNotFound from './pages/LinkNotFound';
 
 
 function App() {
@@ -25,6 +26,7 @@ function App() {
                         </>
                     } />
                     <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/link-not-found" element={<LinkNotFound />} />
                     <Route path="*" element={<NotFound />} />
                 </Routes>
             </div>

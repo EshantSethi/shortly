@@ -1,38 +1,77 @@
 import { QRCodeCanvas as QRCode } from 'qrcode.react';
 import React, { useState, useEffect } from 'react';
 import { shortenUrl, getAllUrls } from '../services/api';
+import BASE_URL from '../services/config';
+
+const ALIAS_PATTERN = /^[a-zA-Z0-9_-]{3,20}$/;
+
+function isLinkExpired(link) {
+    return link.expiresAt && link.expiresAt !== 'Never' && new Date(link.expiresAt) < new Date();
+}
 
 function Home() {
     const [originalUrl, setOriginalUrl] = useState('');
     const [expiryDays, setExpiryDays] = useState(30);
     const [customCode, setCustomCode] = useState('');
+    const [aliasError, setAliasError] = useState('');
     const [result, setResult] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [toast, setToast] = useState(false);
     const [recentLinks, setRecentLinks] = useState([]);
     const [totalUrls, setTotalUrls] = useState(0);
+    const [totalClicks, setTotalClicks] = useState(0);
 
     useEffect(() => {
         const saved = localStorage.getItem('recentLinks');
         if (saved) setRecentLinks(JSON.parse(saved));
     }, []);
+
     useEffect(() => {
-    getAllUrls().then(data => setTotalUrls(data.length)).catch(() => {});
-}, [result]);
+        getAllUrls().then(data => {
+            setTotalUrls(data.length);
+            setTotalClicks(data.reduce((sum, u) => sum + u.clickCount, 0));
+        }).catch(() => {});
+    }, [result]);
+
+    const handleAliasChange = (e) => {
+        const val = e.target.value;
+        setCustomCode(val);
+        if (val && !ALIAS_PATTERN.test(val)) {
+            setAliasError('3–20 chars: letters, numbers, - or _ only');
+        } else {
+            setAliasError('');
+        }
+    };
 
     const handleShorten = async () => {
         if (!originalUrl) { setError('Please enter a URL'); return; }
+        const trimmed = originalUrl.trim();
+        const hasProtocol = trimmed.startsWith('http://') || trimmed.startsWith('https://');
+        if (!hasProtocol && !trimmed.includes('.')) {
+            setError('Please enter a valid URL (e.g. https://example.com)');
+            return;
+        }
+        if (customCode && !ALIAS_PATTERN.test(customCode)) {
+            setError('Fix the custom alias before shortening.');
+            return;
+        }
         setLoading(true);
         setError('');
         try {
-            const data = await shortenUrl(originalUrl, expiryDays, customCode);
+            const data = await shortenUrl(trimmed, expiryDays, customCode);
             setResult(data);
             const updated = [data, ...recentLinks].slice(0, 5);
             setRecentLinks(updated);
             localStorage.setItem('recentLinks', JSON.stringify(updated));
         } catch (err) {
-            setError('Something went wrong. Make sure your backend is running.');
+            if (!err.response) {
+                setError('Cannot reach the server. Make sure the backend is running.');
+            } else if (err.response.status === 429) {
+                setError('Too many requests. Please wait a moment and try again.');
+            } else {
+                setError(err.response.data?.error || 'Something went wrong. Please try again.');
+            }
         }
         setLoading(false);
     };
@@ -41,6 +80,16 @@ function Home() {
         navigator.clipboard.writeText(url);
         setToast(true);
         setTimeout(() => setToast(false), 2500);
+    };
+
+    const downloadQR = () => {
+        const canvas = document.getElementById('qr-canvas-wrapper')?.querySelector('canvas');
+        if (!canvas) return;
+        const url = canvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `shortly-qr-${result?.shortCode || 'code'}.png`;
+        a.click();
     };
 
     return (
@@ -52,7 +101,7 @@ function Home() {
                 </div>
             )}
             <div style={styles.hero}>
-                <h1 style={styles.heroTitle}>
+                <h1 className="hero-title" style={styles.heroTitle}>
                     Shorten. Share.<br />
                     <span style={styles.heroAccent}>Track everything.</span>
                 </h1>
@@ -60,7 +109,7 @@ function Home() {
                     Turn long URLs into powerful short links with real-time analytics
                 </p>
             </div>
-            <div style={styles.card}>
+            <div className="home-card" style={styles.card}>
                 <input
                     style={styles.input}
                     type="text"
@@ -79,16 +128,20 @@ function Home() {
                         <option value={0}>Never</option>
                     </select>
                 </div>
-                <div style={styles.aliasRow}>
+                <div style={{
+                    ...styles.aliasRow,
+                    borderColor: aliasError ? 'rgba(233,69,96,0.6)' : 'rgba(233,69,96,0.2)',
+                }}>
                     <span style={styles.aliasPrefix}>shortly/</span>
                     <input
                         style={styles.aliasInput}
                         type="text"
                         placeholder="custom-alias (optional)"
                         value={customCode}
-                        onChange={(e) => setCustomCode(e.target.value)}
+                        onChange={handleAliasChange}
                     />
                 </div>
+                {aliasError && <p style={styles.aliasHint}>{aliasError}</p>}
                 {error && <p style={styles.error}>{error}</p>}
                 <button
                     style={styles.button}
@@ -119,11 +172,13 @@ function Home() {
                         </div>
                         <p style={styles.expiry}>
                             Expires: {result.expiresAt === 'Never' ? 'Never' :
-                            new Date(result.expiresAt).toLocaleDateString()}
+                            new Date(result.expiresAt).toLocaleDateString(undefined, {
+                                year: 'numeric', month: 'short', day: 'numeric'
+                            })}
                         </p>
                         <div style={styles.qrSection}>
                             <p style={styles.qrLabel}>QR Code</p>
-                            <div style={styles.qrBox}>
+                            <div id="qr-canvas-wrapper" style={styles.qrBox}>
                                 <QRCode
                                     value={result.shortUrl}
                                     size={120}
@@ -132,19 +187,24 @@ function Home() {
                                     level="H"
                                 />
                             </div>
-                            <p style={styles.qrHint}>Scan to open the link</p>
+                            <div style={styles.qrActions}>
+                                <p style={styles.qrHint}>Scan to open the link</p>
+                                <button style={styles.qrDownloadBtn} onClick={downloadQR}>
+                                    Download QR
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
             </div>
-            <div style={styles.statsRow}>
-<div style={styles.statBox}>
-    <div style={styles.statNum}>{totalUrls}</div>
-    <div style={styles.statLabel}>Links created</div>
-</div>
+            <div className="stats-row" style={styles.statsRow}>
                 <div style={styles.statBox}>
-                    <div style={styles.statNum}>10ms</div>
-                    <div style={styles.statLabel}>Redirect speed</div>
+                    <div style={styles.statNum}>{totalUrls}</div>
+                    <div style={styles.statLabel}>Links created</div>
+                </div>
+                <div style={styles.statBox}>
+                    <div style={styles.statNum}>{totalClicks}</div>
+                    <div style={styles.statLabel}>Total clicks</div>
                 </div>
                 <div style={styles.statBox}>
                     <div style={styles.statNum}>Redis</div>
@@ -154,25 +214,36 @@ function Home() {
             {recentLinks.length > 0 && (
                 <div style={styles.recentBox}>
                     <p style={styles.recentTitle}>Recent links</p>
-                    {recentLinks.map((link, i) => (
-                        <div key={i} style={styles.recentRow}>
-                            <span style={styles.recentUrl}>
-                                {link.originalUrl.length > 40
-                                    ? link.originalUrl.substring(0, 40) + '...'
-                                    : link.originalUrl}
-                            </span>
-                            <div style={styles.recentRight}>
-                                <a href={link.shortUrl} target="_blank"
-                                    rel="noreferrer" style={styles.recentShort}>
-                                    {link.shortUrl.replace('http://localhost:8080', '')}
-                                </a>
-                                <button style={styles.recentCopy}
-                                    onClick={() => copyToClipboard(link.shortUrl)}>
-                                    Copy
-                                </button>
+                    {recentLinks.map((link, i) => {
+                        const expired = isLinkExpired(link);
+                        return (
+                            <div key={i} style={{
+                                ...styles.recentRow,
+                                opacity: expired ? 0.5 : 1,
+                            }}>
+                                <div style={styles.recentLeft}>
+                                    <span style={styles.recentUrl}>
+                                        {link.originalUrl.length > 40
+                                            ? link.originalUrl.substring(0, 40) + '...'
+                                            : link.originalUrl}
+                                    </span>
+                                    {expired && <span style={styles.expiredBadge}>Expired</span>}
+                                </div>
+                                <div style={styles.recentRight}>
+                                    <a href={link.shortUrl} target="_blank"
+                                        rel="noreferrer" style={styles.recentShort}>
+                                        {link.shortUrl.replace(BASE_URL.replace('/api', ''), '')}
+                                    </a>
+                                    {!expired && (
+                                        <button style={styles.recentCopy}
+                                            onClick={() => copyToClipboard(link.shortUrl)}>
+                                            Copy
+                                        </button>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
         </div>
@@ -181,41 +252,57 @@ function Home() {
 
 const styles = {
     page: {
-    minHeight: '100vh',
-    background: 'linear-gradient(-45deg, #0f3460, #16213e, #1a1a2e, #0d1b2a)',
-    backgroundSize: '400% 400%',
-    animation: 'gradientShift 12s ease infinite',  // add this line
-    padding: '60px 20px 40px',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-},
+        minHeight: '100vh',
+        background: 'linear-gradient(-45deg, #0f3460, #16213e, #1a1a2e, #0d1b2a)',
+        backgroundSize: '400% 400%',
+        padding: '60px 20px 40px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+    },
     qrSection: {
-    marginTop: '20px',
-    padding: '16px',
-    background: 'rgba(255,255,255,0.03)',
-    borderRadius: '12px',
-    textAlign: 'center',
-    border: '1px solid rgba(255,255,255,0.06)',
-},
-qrLabel: {
-    color: '#a8a8b3',
-    fontSize: '11px',
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
-    marginBottom: '12px',
-},
-qrBox: {
-    display: 'inline-block',
-    padding: '10px',
-    background: '#ffffff',
-    borderRadius: '8px',
-    marginBottom: '8px',
-},
-qrHint: {
-    color: '#555',
-    fontSize: '11px',
-},
+        marginTop: '20px',
+        padding: '16px',
+        background: 'rgba(255,255,255,0.03)',
+        borderRadius: '12px',
+        textAlign: 'center',
+        border: '1px solid rgba(255,255,255,0.06)',
+    },
+    qrLabel: {
+        color: '#a8a8b3',
+        fontSize: '11px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        marginBottom: '12px',
+    },
+    qrBox: {
+        display: 'inline-block',
+        padding: '10px',
+        background: '#ffffff',
+        borderRadius: '8px',
+        marginBottom: '10px',
+    },
+    qrActions: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '12px',
+    },
+    qrHint: {
+        color: '#555',
+        fontSize: '11px',
+        margin: 0,
+    },
+    qrDownloadBtn: {
+        padding: '5px 12px',
+        background: 'rgba(233,69,96,0.15)',
+        border: '1px solid rgba(233,69,96,0.3)',
+        borderRadius: '6px',
+        color: '#e94560',
+        fontSize: '11px',
+        cursor: 'pointer',
+        fontWeight: '500',
+    },
     toast: {
         position: 'fixed',
         top: '80px',
@@ -269,6 +356,7 @@ qrHint: {
         maxWidth: '580px',
         boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
         marginBottom: '32px',
+        boxSizing: 'border-box',
     },
     input: {
         width: '100%',
@@ -312,7 +400,7 @@ qrHint: {
     aliasRow: {
         display: 'flex',
         alignItems: 'center',
-        marginBottom: '20px',
+        marginBottom: '8px',
         border: '1px solid rgba(233,69,96,0.2)',
         borderRadius: '12px',
         overflow: 'hidden',
@@ -333,6 +421,12 @@ qrHint: {
         color: '#ffffff',
         fontSize: '13px',
         outline: 'none',
+    },
+    aliasHint: {
+        color: '#e94560',
+        fontSize: '11px',
+        marginBottom: '12px',
+        marginTop: '0',
     },
     error: { color: '#e94560', fontSize: '13px', marginBottom: '12px' },
     result: {
@@ -401,8 +495,18 @@ qrHint: {
         padding: '10px 0',
         borderBottom: '1px solid rgba(255,255,255,0.06)',
     },
-    recentUrl: { color: '#a8a8b3', fontSize: '12px', flex: 1 },
-    recentRight: { display: 'flex', alignItems: 'center', gap: '10px' },
+    recentLeft: { display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 },
+    recentUrl: { color: '#a8a8b3', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+    expiredBadge: {
+        fontSize: '10px',
+        color: '#e94560',
+        background: 'rgba(233,69,96,0.1)',
+        border: '1px solid rgba(233,69,96,0.2)',
+        borderRadius: '4px',
+        padding: '1px 6px',
+        whiteSpace: 'nowrap',
+    },
+    recentRight: { display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 },
     recentShort: { color: '#e94560', fontSize: '12px', fontWeight: '500', textDecoration: 'none' },
     recentCopy: {
         padding: '4px 10px',

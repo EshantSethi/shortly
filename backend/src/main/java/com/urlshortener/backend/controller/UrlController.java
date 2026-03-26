@@ -1,8 +1,13 @@
 package com.urlshortener.backend.controller;
 
+import java.net.URI;
+import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,6 +24,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.urlshortener.backend.model.UrlMapping;
 import com.urlshortener.backend.service.UrlService;
 
+import jakarta.servlet.http.HttpServletRequest;
+
 @RestController
 @RequestMapping("/api")
 public class UrlController {
@@ -29,8 +36,54 @@ public class UrlController {
     @Value("${app.base-url:http://localhost:8080}")
     private String baseUrl;
 
+    @Value("${app.frontend-url:http://localhost:3000}")
+    private String frontendUrl;
+
+    @Value("${app.rate-limit.requests-per-minute:20}")
+    private int rateLimitRpm;
+
+    // Separate higher limit for read endpoints (dashboard use)
+    private static final int READ_LIMIT_RPM = 60;
+
+    private final ConcurrentHashMap<String, Deque<Long>> rateLimitMap = new ConcurrentHashMap<>();
+
+    private boolean isRateLimited(String ip, int limit) {
+        long now = Instant.now().toEpochMilli();
+        long windowMs = 60_000L;
+        String key = ip + ":" + limit;
+        rateLimitMap.putIfAbsent(key, new ArrayDeque<>());
+        Deque<Long> timestamps = rateLimitMap.get(key);
+        synchronized (timestamps) {
+            while (!timestamps.isEmpty() && now - timestamps.peekFirst() > windowMs) {
+                timestamps.pollFirst();
+            }
+            if (timestamps.size() >= limit) {
+                return true;
+            }
+            timestamps.addLast(now);
+            return false;
+        }
+    }
+
+    private String clientIp(HttpServletRequest req) {
+        return Optional.ofNullable(req.getHeader("X-Forwarded-For"))
+                .map(h -> h.split(",")[0].trim())
+                .orElse(req.getRemoteAddr());
+    }
+
+    @GetMapping("/health")
+    public ResponseEntity<Map<String, String>> health() {
+        return ResponseEntity.ok(Map.of("status", "UP"));
+    }
+
     @PostMapping("/shorten")
-    public ResponseEntity<?> shortenUrl(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<?> shortenUrl(@RequestBody Map<String, Object> request,
+                                        HttpServletRequest httpRequest) {
+        if (isRateLimited(clientIp(httpRequest), rateLimitRpm)) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body(Map.of("error", "Too many requests. Please wait a moment and try again."));
+        }
+
         String originalUrl = (String) request.get("originalUrl");
         int expiryDays = request.containsKey("expiryDays") ? (int) request.get("expiryDays") : 30;
         String customCode = (String) request.get("customCode");
@@ -56,27 +109,42 @@ public class UrlController {
             return ResponseEntity
                 .status(HttpStatus.FOUND)
                 .header("Location", originalUrl.get())
+                // Prevent browsers from caching redirects — ensures expired links stop working immediately
+                .header("Cache-Control", "no-store, no-cache, must-revalidate")
+                .header("Pragma", "no-cache")
                 .build();
         }
 
         return ResponseEntity
-            .status(HttpStatus.NOT_FOUND)
-            .body(Map.of("error", "Short URL not found or has expired"));
+            .status(HttpStatus.FOUND)
+            .location(URI.create(frontendUrl + "/link-not-found"))
+            .header("Cache-Control", "no-store")
+            .build();
     }
 
     @GetMapping("/urls")
-    public ResponseEntity<List<UrlMapping>> getAllUrls() {
+    public ResponseEntity<List<UrlMapping>> getAllUrls(HttpServletRequest httpRequest) {
+        if (isRateLimited(clientIp(httpRequest), READ_LIMIT_RPM)) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
+        }
         return ResponseEntity.ok(urlService.getAllUrls());
     }
 
     @DeleteMapping("/urls/{id}")
-    public ResponseEntity<?> deleteUrl(@PathVariable Long id) {
+    public ResponseEntity<?> deleteUrl(@PathVariable Long id, HttpServletRequest httpRequest) {
+        if (isRateLimited(clientIp(httpRequest), rateLimitRpm)) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body(Map.of("error", "Too many requests. Please slow down."));
+        }
         urlService.deleteUrl(id);
         return ResponseEntity.ok(Map.of("message", "Deleted successfully"));
     }
 
     @GetMapping("/analytics")
-    public ResponseEntity<List<Map<String, Object>>> getAnalytics() {
+    public ResponseEntity<List<Map<String, Object>>> getAnalytics(HttpServletRequest httpRequest) {
+        if (isRateLimited(clientIp(httpRequest), READ_LIMIT_RPM)) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
+        }
         return ResponseEntity.ok(urlService.getClicksPerDay());
     }
 }
