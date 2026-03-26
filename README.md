@@ -2,6 +2,20 @@
 
 A full-stack URL shortener with click analytics, custom aliases, and Redis caching — built with Spring Boot, React, and MySQL.
 
+**Live Demo:**
+- Frontend: https://frontend-seven-rosy-23.vercel.app
+- Backend API: https://url-shortener-production-b0f1.up.railway.app/api/health
+
+---
+
+## Deployment
+
+| Service | Platform | URL |
+|---------|----------|-----|
+| Frontend | Vercel | https://frontend-seven-rosy-23.vercel.app |
+| Backend | Railway | https://url-shortener-production-b0f1.up.railway.app |
+| MySQL | Railway | Managed database |
+| Redis | Railway | Managed cache |
 
 ---
 
@@ -50,6 +64,8 @@ A full-stack URL shortener with click analytics, custom aliases, and Redis cachi
 | Database | MySQL |
 | Cache | Redis |
 | Build Tool | Maven |
+| Frontend Hosting | Vercel |
+| Backend Hosting | Railway |
 
 ## Architecture
 
