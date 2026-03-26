@@ -9,22 +9,25 @@ A full-stack URL shortener with click analytics, custom aliases, and Redis cachi
 
 ## Demo
 
-<!-- After recording, upload your screen recording to YouTube or GitHub and replace the link below -->
-<!-- To embed a clickable video thumbnail, use this format: -->
-<!-- [![Shortly Demo](docs/screenshots/thumbnail.png)](YOUR_VIDEO_LINK) -->
+[![Shortly Demo](assets/screenshots/01-home.png)](assets/demo.mp4)
 
-> Demo video coming soon
+> Click the image above or view [`assets/demo.mp4`](assets/demo.mp4) for a full walkthrough.
 
 ---
 
 ## Screenshots
 
-<!-- Upload your screenshots to docs/screenshots/ and uncomment the lines below -->
-<!-- ![Home Page](docs/screenshots/home.png) -->
-<!-- ![Dashboard](docs/screenshots/dashboard.png) -->
-<!-- ![QR Code](docs/screenshots/qrcode.png) -->
+### Home — Shorten a URL
+![Home Page](assets/screenshots/01-home.png)
 
-> Screenshots coming soon
+### Result with QR Code
+![Result with QR Code](assets/screenshots/03-home-result.png)
+
+### Analytics Dashboard
+![Dashboard](assets/screenshots/04-dashboard.png)
+
+### Link Not Found
+![Link Not Found](assets/screenshots/05-link-not-found.png)
 
 ---
 
