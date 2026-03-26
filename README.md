@@ -2,8 +2,6 @@
 
 A full-stack URL shortener with click analytics, custom aliases, and Redis caching — built with Spring Boot, React, and MySQL.
 
-## Live Demo
-> Coming soon (deployment in progress)
 
 ---
 
