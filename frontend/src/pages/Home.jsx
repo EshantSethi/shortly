@@ -1,26 +1,32 @@
+import { QRCodeCanvas as QRCode } from 'qrcode.react';
 import React, { useState, useEffect } from 'react';
-import { shortenUrl } from '../services/api';
+import { shortenUrl, getAllUrls } from '../services/api';
 
 function Home() {
     const [originalUrl, setOriginalUrl] = useState('');
     const [expiryDays, setExpiryDays] = useState(30);
+    const [customCode, setCustomCode] = useState('');
     const [result, setResult] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [toast, setToast] = useState(false);
     const [recentLinks, setRecentLinks] = useState([]);
+    const [totalUrls, setTotalUrls] = useState(0);
 
     useEffect(() => {
         const saved = localStorage.getItem('recentLinks');
         if (saved) setRecentLinks(JSON.parse(saved));
     }, []);
+    useEffect(() => {
+    getAllUrls().then(data => setTotalUrls(data.length)).catch(() => {});
+}, [result]);
 
     const handleShorten = async () => {
         if (!originalUrl) { setError('Please enter a URL'); return; }
         setLoading(true);
         setError('');
         try {
-            const data = await shortenUrl(originalUrl, expiryDays);
+            const data = await shortenUrl(originalUrl, expiryDays, customCode);
             setResult(data);
             const updated = [data, ...recentLinks].slice(0, 5);
             setRecentLinks(updated);
@@ -73,6 +79,16 @@ function Home() {
                         <option value={0}>Never</option>
                     </select>
                 </div>
+                <div style={styles.aliasRow}>
+                    <span style={styles.aliasPrefix}>shortly/</span>
+                    <input
+                        style={styles.aliasInput}
+                        type="text"
+                        placeholder="custom-alias (optional)"
+                        value={customCode}
+                        onChange={(e) => setCustomCode(e.target.value)}
+                    />
+                </div>
                 {error && <p style={styles.error}>{error}</p>}
                 <button
                     style={styles.button}
@@ -105,14 +121,27 @@ function Home() {
                             Expires: {result.expiresAt === 'Never' ? 'Never' :
                             new Date(result.expiresAt).toLocaleDateString()}
                         </p>
+                        <div style={styles.qrSection}>
+                            <p style={styles.qrLabel}>QR Code</p>
+                            <div style={styles.qrBox}>
+                                <QRCode
+                                    value={result.shortUrl}
+                                    size={120}
+                                    bgColor="#ffffff"
+                                    fgColor="#1a1a2e"
+                                    level="H"
+                                />
+                            </div>
+                            <p style={styles.qrHint}>Scan to open the link</p>
+                        </div>
                     </div>
                 )}
             </div>
             <div style={styles.statsRow}>
-                <div style={styles.statBox}>
-                    <div style={styles.statNum}>56B+</div>
-                    <div style={styles.statLabel}>Possible links</div>
-                </div>
+<div style={styles.statBox}>
+    <div style={styles.statNum}>{totalUrls}</div>
+    <div style={styles.statLabel}>Links created</div>
+</div>
                 <div style={styles.statBox}>
                     <div style={styles.statNum}>10ms</div>
                     <div style={styles.statLabel}>Redirect speed</div>
@@ -160,6 +189,32 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
+},
+    qrSection: {
+    marginTop: '20px',
+    padding: '16px',
+    background: 'rgba(255,255,255,0.03)',
+    borderRadius: '12px',
+    textAlign: 'center',
+    border: '1px solid rgba(255,255,255,0.06)',
+},
+qrLabel: {
+    color: '#a8a8b3',
+    fontSize: '11px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    marginBottom: '12px',
+},
+qrBox: {
+    display: 'inline-block',
+    padding: '10px',
+    background: '#ffffff',
+    borderRadius: '8px',
+    marginBottom: '8px',
+},
+qrHint: {
+    color: '#555',
+    fontSize: '11px',
 },
     toast: {
         position: 'fixed',
@@ -253,6 +308,31 @@ const styles = {
         fontWeight: '600',
         cursor: 'pointer',
         transition: 'all 0.3s ease',
+    },
+    aliasRow: {
+        display: 'flex',
+        alignItems: 'center',
+        marginBottom: '20px',
+        border: '1px solid rgba(233,69,96,0.2)',
+        borderRadius: '12px',
+        overflow: 'hidden',
+        backgroundColor: 'rgba(15, 52, 96, 0.8)',
+    },
+    aliasPrefix: {
+        padding: '12px 14px',
+        color: '#a8a8b3',
+        fontSize: '13px',
+        borderRight: '1px solid rgba(233,69,96,0.2)',
+        whiteSpace: 'nowrap',
+    },
+    aliasInput: {
+        flex: 1,
+        padding: '12px 14px',
+        border: 'none',
+        backgroundColor: 'transparent',
+        color: '#ffffff',
+        fontSize: '13px',
+        outline: 'none',
     },
     error: { color: '#e94560', fontSize: '13px', marginBottom: '12px' },
     result: {
