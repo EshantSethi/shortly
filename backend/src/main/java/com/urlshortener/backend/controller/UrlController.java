@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,10 +28,10 @@ import jakarta.servlet.http.HttpServletRequest;
 
 @RestController
 @RequestMapping("/api")
+@RequiredArgsConstructor
 public class UrlController {
 
-    @Autowired
-    private UrlService urlService;
+    private final UrlService urlService;
 
     @Value("${app.base-url:http://localhost:8080}")
     private String baseUrl;
@@ -56,6 +56,9 @@ public class UrlController {
         synchronized (timestamps) {
             while (!timestamps.isEmpty() && now - timestamps.peekFirst() > windowMs) {
                 timestamps.pollFirst();
+            }
+            if (timestamps.isEmpty()) {
+                rateLimitMap.remove(key);
             }
             if (timestamps.size() >= limit) {
                 return true;

@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -20,16 +20,12 @@ import com.urlshortener.backend.repository.ClickEventRepository;
 import com.urlshortener.backend.repository.UrlRepository;
 
 @Service
+@RequiredArgsConstructor
 public class UrlService {
 
-    @Autowired
-    private UrlRepository urlRepository;
-
-    @Autowired
-    private ClickEventRepository clickEventRepository;
-
-    @Autowired
-    private RedisTemplate<String, String> redisTemplate;
+    private final UrlRepository urlRepository;
+    private final ClickEventRepository clickEventRepository;
+    private final RedisTemplate<String, String> redisTemplate;
 
     private static final String CHARACTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     private static final int SHORT_CODE_LENGTH = 6;
@@ -67,7 +63,6 @@ public class UrlService {
         urlMapping.setOriginalUrl(originalUrl);
         urlMapping.setShortCode(shortCode);
         urlMapping.setClickCount(0L);
-        urlMapping.setCreatedAt(LocalDateTime.now());
 
         if (expiryDays > 0) {
             urlMapping.setExpiresAt(LocalDateTime.now().plusDays(expiryDays));

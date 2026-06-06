@@ -15,16 +15,7 @@ function App() {
             <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#0f0f1a' }}>
                 <Navbar />
                 <Routes>
-                    <Route path="/" element={
-                    
-                    
-        
-                        <>
-                            <Home />
-                            <Features />
-                            <Footer />
-                        </>
-                    } />
+                    <Route path="/" element={<><Home /><Features /><Footer /></>} />
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/link-not-found" element={<LinkNotFound />} />
                     <Route path="*" element={<NotFound />} />

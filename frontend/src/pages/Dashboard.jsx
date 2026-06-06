@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getAllUrls, deleteUrl, getAnalytics } from '../services/api';
+import BASE_URL from '../services/config';
 import { Bar, Line } from 'react-chartjs-2';
 import {
     Chart as ChartJS,
@@ -74,9 +75,7 @@ function Dashboard() {
     const todayEntry = analytics.find(a => a.day === todayStr);
     const clicksToday = todayEntry ? Number(todayEntry.count) : 0;
 
-    const baseUrl = process.env.REACT_APP_API_URL
-        ? process.env.REACT_APP_API_URL.replace('/api', '')
-        : 'http://localhost:8080';
+    const baseUrl = BASE_URL.replace('/api', '');
 
     const barData = {
         labels: activeUrls.map(u => u.shortCode),
