@@ -4,7 +4,7 @@ A full-stack URL shortener with click analytics, custom aliases, and Redis cachi
 
 **Live Demo:**
 - Frontend: https://frontend-seven-rosy-23.vercel.app
-- Backend API: https://url-shortener-production-b0f1.up.railway.app/api/health
+- Backend API: https://url-shortener-qiwf.onrender.com/api/health
 
 ---
 
@@ -13,9 +13,9 @@ A full-stack URL shortener with click analytics, custom aliases, and Redis cachi
 | Service | Platform | URL |
 |---------|----------|-----|
 | Frontend | Vercel | https://frontend-seven-rosy-23.vercel.app |
-| Backend | Railway | https://url-shortener-production-b0f1.up.railway.app |
-| MySQL | Railway | Managed database |
-| Redis | Railway | Managed cache |
+| Backend | Render | https://url-shortener-qiwf.onrender.com |
+| Database | Neon (PostgreSQL) | Managed database |
+| Cache | Upstash Redis | Managed cache |
 
 ---
 
