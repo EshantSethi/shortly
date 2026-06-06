@@ -61,11 +61,11 @@ A full-stack URL shortener with click analytics, custom aliases, and Redis cachi
 |-------|-----------|
 | Frontend | React 19, React Router v7, Chart.js, Axios |
 | Backend | Java 21, Spring Boot 3.5 |
-| Database | MySQL |
+| Database | PostgreSQL |
 | Cache | Redis |
 | Build Tool | Maven |
 | Frontend Hosting | Vercel |
-| Backend Hosting | Railway |
+| Backend Hosting | Render |
 
 ## Architecture
 
@@ -75,7 +75,7 @@ User → React (port 3000)
     Spring Boot API (port 8080)
            ↓
     Check Redis cache first
-    If not cached → MySQL
+    If not cached → PostgreSQL
            ↓
     Return redirect + increment click count
     Record ClickEvent with timestamp
@@ -96,7 +96,7 @@ User → React (port 3000)
 ### Prerequisites
 - Java 21
 - Node.js 20+
-- MySQL (create a database named `urlshortener`)
+- PostgreSQL (create a database named `urlshortener`)
 - Redis
 
 ### Backend
@@ -120,8 +120,8 @@ Open `http://localhost:3000` in your browser.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DB_USERNAME` | `root` | MySQL username |
-| `DB_PASSWORD` | `root123` | MySQL password |
+| `DB_USERNAME` | `postgres` | PostgreSQL username |
+| `DB_PASSWORD` | `postgres` | PostgreSQL password |
 | `REDIS_HOST` | `localhost` | Redis host |
 | `REDIS_PORT` | `6379` | Redis port |
 | `APP_BASE_URL` | `http://localhost:8080` | Backend base URL (used in generated short links) |
