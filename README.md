@@ -1,10 +1,10 @@
 # Shortly — URL Shortener
 
-A full-stack URL shortener with click analytics, custom aliases, and Redis caching — built with Spring Boot, React, and MySQL.
+A full-stack URL shortener with click analytics, custom aliases, and Redis caching — built with Spring Boot, React, and PostgreSQL.
 
-**Live Demo:**
-- Frontend: https://frontend-seven-rosy-23.vercel.app
-- Backend API: https://url-shortener-qiwf.onrender.com/api/health
+**Live Demo:** https://frontend-seven-rosy-23.vercel.app
+
+> Note: Backend is on Render's free tier and may take ~50 seconds to wake up after inactivity.
 
 ---
 
