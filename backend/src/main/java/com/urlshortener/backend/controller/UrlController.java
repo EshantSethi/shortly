@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -45,20 +46,29 @@ public class UrlController {
     // Separate higher limit for read endpoints (dashboard use)
     private static final int READ_LIMIT_RPM = 60;
 
+    private static final long WINDOW_MS = 60_000L;
+
     private final ConcurrentHashMap<String, Deque<Long>> rateLimitMap = new ConcurrentHashMap<>();
 
     private boolean isRateLimited(String ip, int limit) {
-        long now = Instant.now().toEpochMilli();
-        long windowMs = 60_000L;
+        return isRateLimited(ip, limit, Instant.now().toEpochMilli());
+    }
+
+    /**
+     * Sliding-window rate limiter. Returns true when the caller should be blocked (429).
+     *
+     * <p>Package-private and time-injectable so it can be unit tested deterministically
+     * without a Spring context or a real 60-second wall-clock wait. Production callers use
+     * the {@code isRateLimited(ip, limit)} overload, which supplies {@code Instant.now()}.
+     */
+    boolean isRateLimited(String ip, int limit, long now) {
         String key = ip + ":" + limit;
-        rateLimitMap.putIfAbsent(key, new ArrayDeque<>());
-        Deque<Long> timestamps = rateLimitMap.get(key);
+        // Atomically fetch-or-create the deque so every thread for a given key shares the
+        // same instance (and therefore the same monitor). Never remove it here.
+        Deque<Long> timestamps = rateLimitMap.computeIfAbsent(key, k -> new ArrayDeque<>());
         synchronized (timestamps) {
-            while (!timestamps.isEmpty() && now - timestamps.peekFirst() > windowMs) {
+            while (!timestamps.isEmpty() && now - timestamps.peekFirst() > WINDOW_MS) {
                 timestamps.pollFirst();
-            }
-            if (timestamps.isEmpty()) {
-                rateLimitMap.remove(key);
             }
             if (timestamps.size() >= limit) {
                 return true;
@@ -66,6 +76,26 @@ public class UrlController {
             timestamps.addLast(now);
             return false;
         }
+    }
+
+    /**
+     * Periodically drops map entries whose sliding windows have fully expired, so the map
+     * does not grow without bound as new IPs appear. Synchronizes on each deque before
+     * deciding to remove it, so an entry that another thread is concurrently writing to is
+     * never dropped.
+     */
+    @Scheduled(fixedRate = 300_000L) // every 5 minutes
+    void cleanupRateLimitMap() {
+        long now = Instant.now().toEpochMilli();
+        rateLimitMap.entrySet().removeIf(entry -> {
+            Deque<Long> timestamps = entry.getValue();
+            synchronized (timestamps) {
+                while (!timestamps.isEmpty() && now - timestamps.peekFirst() > WINDOW_MS) {
+                    timestamps.pollFirst();
+                }
+                return timestamps.isEmpty();
+            }
+        });
     }
 
     private String clientIp(HttpServletRequest req) {
